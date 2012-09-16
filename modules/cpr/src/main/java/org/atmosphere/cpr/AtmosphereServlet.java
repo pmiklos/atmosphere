@@ -56,6 +56,7 @@ package org.atmosphere.cpr;
 import org.apache.catalina.CometEvent;
 import org.apache.catalina.CometProcessor;
 import org.atmosphere.container.JBossWebCometSupport;
+import org.atmosphere.container.JBossWebSocketSupport;
 import org.atmosphere.container.Tomcat7CometSupport;
 import org.atmosphere.container.TomcatCometSupport;
 import org.atmosphere.di.ServletContextProvider;
@@ -354,6 +355,7 @@ public class AtmosphereServlet extends HttpServlet implements CometProcessor, Ht
         }
     }
 
+    
     /**
      * Hack to support JBossWeb AIO like other WebServer. This method is invoked
      * by Tomcat when it detect a {@link Servlet} implements the interface
@@ -368,16 +370,25 @@ public class AtmosphereServlet extends HttpServlet implements CometProcessor, Ht
         HttpServletResponse res = httpEvent.getHttpServletResponse();
         req.setAttribute(JBossWebCometSupport.HTTP_EVENT, httpEvent);
 
-        if (!framework.isCometSupportSpecified && !framework.isCometSupportConfigured.getAndSet(true)) {
+        if (!framework.isCometSupportSpecified && !framework.isCometSupportConfigured.get()) {
             synchronized (framework.asyncSupport) {
-                if (!framework.asyncSupport.getClass().equals(JBossWebCometSupport.class)) {
+                if (!framework.isCometSupportConfigured.getAndSet(true)
+                        && !framework.asyncSupport.getClass().equals(JBossWebCometSupport.class)
+                        && !framework.asyncSupport.getClass().equals(JBossWebSocketSupport.class)) {
                     logger.warn("JBossWebCometSupport is enabled, switching to it");
                     framework.asyncSupport = new JBossWebCometSupport(framework.config);
                     framework.asyncSupport.init(framework.config.getServletConfig());
                 }
             }
         }
-        framework.doCometSupport(AtmosphereRequest.wrap(req), AtmosphereResponse.wrap(res));
+        
+        if (framework.asyncSupport.getClass().equals(JBossWebSocketSupport.class)) {
+            logger.trace("Dispatching websocket event: " + httpEvent);
+            ((JBossWebSocketSupport) framework.asyncSupport).dispatch(httpEvent);
+        } else {
+            logger.trace("Dispatching comet event: " + httpEvent);
+            framework.doCometSupport(AtmosphereRequest.wrap(req), AtmosphereResponse.wrap(res));
+        }
     }
 
 }
