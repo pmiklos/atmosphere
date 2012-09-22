@@ -71,7 +71,7 @@ public class DefaultAnnotationProcessor implements AnnotationProcessor {
                         AtmosphereHandlerService.class,
                         BroadcasterCacheService.class,
                         BroadcasterFilterService.class,
-                        BroadcasterFactory.class,
+                        BroadcasterFactoryService.class,
                         BroadcasterService.class,
                         MeteorService.class,
                         WebSocketHandlerService.class,
@@ -122,6 +122,8 @@ public class DefaultAnnotationProcessor implements AnnotationProcessor {
                             }
                         }
                         framework.addAtmosphereHandler(a.path(), handler, l);
+
+                        framework.sessionSupport(a.supportSession());
                     } catch (Throwable e) {
                         logger.warn("", e);
                     }
