@@ -49,6 +49,7 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
     protected long invalidateCacheInterval = TimeUnit.MINUTES.toMillis(1);//1 minute
     protected ScheduledExecutorService reaper = Executors.newSingleThreadScheduledExecutor();
     protected boolean isShared = false;
+    protected final List<BroadcasterCacheInspector> inspectors = new LinkedList<BroadcasterCacheInspector>();
 
     @Override
     public void start() {
@@ -57,11 +58,11 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
             public void run() {
                 readWriteLock.writeLock().lock();
                 try {
-                    long now = System.currentTimeMillis();
+                    long now = System.nanoTime();
                     List<CacheMessage> expiredMessages = new ArrayList<CacheMessage>();
 
                     for (CacheMessage message : messages) {
-                        if (message.getCreateTime() <= now - maxCacheTime) {
+                        if (TimeUnit.NANOSECONDS.toMillis(now - message.getCreateTime()) > maxCacheTime) {
                             expiredMessages.add(message);
                         }
                     }
@@ -90,6 +91,8 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
     }
 
     protected void put(Message message, Long now) {
+        if (!inspect(message)) return;
+
         readWriteLock.writeLock().lock();
         try {
             boolean hasMessageWithSameId = messagesIds.contains(message.id);
@@ -122,6 +125,7 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
 
     /**
      * Set to true the associated {@link #getReaper()} is shared amongs {@link BroadcasterCache}
+     *
      * @param isShared to true if shared. False by default.
      * @return this
      */
@@ -132,6 +136,7 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
 
     /**
      * Set the {@link ScheduledExecutorService} to clear the cached message.
+     *
      * @param reaper the {@link ScheduledExecutorService} to clear the cached message.
      * @return this
      */
@@ -142,6 +147,7 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
 
     /**
      * Return the {@link ScheduledExecutorService}
+     *
      * @return the {@link ScheduledExecutorService}
      */
     public ScheduledExecutorService getReaper() {
@@ -150,6 +156,7 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
 
     /**
      * Set the time, in millisecond, the cache will be checked and purged.
+     *
      * @param invalidateCacheInterval
      * @return this
      */
@@ -160,11 +167,25 @@ public abstract class AbstractBroadcasterCache implements BroadcasterCache {
 
     /**
      * Set the maxium time, in millisecond, a message stay alive in the cache.
+     *
      * @param maxCacheTime the maxium time, in millisecond, a message stay alive in the cache.
      * @return this
      */
     public AbstractBroadcasterCache setMaxCacheTime(long maxCacheTime) {
         this.maxCacheTime = maxCacheTime;
         return this;
+    }
+
+    @Override
+    public BroadcasterCache inspector(BroadcasterCacheInspector b) {
+        inspectors.add(b);
+        return this;
+    }
+
+    protected boolean inspect(Message m) {
+        for (BroadcasterCacheInspector b : inspectors) {
+              if (!b.inspect(m)) return false;
+        }
+        return true;
     }
 }

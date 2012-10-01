@@ -20,6 +20,7 @@ import org.atmosphere.cpr.AtmosphereRequest;
 import org.atmosphere.cpr.AtmosphereResource;
 import org.atmosphere.cpr.AtmosphereResourceEvent;
 import org.atmosphere.cpr.AtmosphereResourceEventListener;
+import org.atmosphere.cpr.AtmosphereResourceEventListenerAdapter;
 import org.atmosphere.cpr.AtmosphereResponse;
 import org.atmosphere.cpr.Broadcaster;
 import org.atmosphere.cpr.Serializer;
@@ -45,7 +46,7 @@ import org.atmosphere.gwt.server.SerializationException;
 public class GwtAtmosphereResourceImpl implements GwtAtmosphereResource {
 
     public static final String HEARTBEAT_MESSAGE = "4dc5bdb9-edc8-4edf-8833-ab478326d8c9";
-
+    
     public GwtAtmosphereResourceImpl(AtmosphereResource resource,
                                      AtmosphereGwtHandler servlet, int heartBeatInterval) throws IOException {
         this(resource, servlet, heartBeatInterval, true);
@@ -207,6 +208,15 @@ public class GwtAtmosphereResourceImpl implements GwtAtmosphereResource {
         return writer;
     }
 
+    @Override
+    public void sendError(int statusCode, String message) {
+        try {
+            writer.sendError(statusCode, message);
+        } catch (IOException ex) {
+            logger.error("Failed to send error to client", ex);
+        }
+    }
+
     ScheduledFuture<?> scheduleHeartbeat() {
         return getBroadcaster().getBroadcasterConfig().getScheduledExecutorService()
                 .schedule(heartBeatTask, heartBeatInterval, TimeUnit.MILLISECONDS);
@@ -299,7 +309,12 @@ public class GwtAtmosphereResourceImpl implements GwtAtmosphereResource {
         }
     };
 
-    private final AtmosphereResourceEventListener eventListener = new AtmosphereResourceEventListener() {
+    private final AtmosphereResourceEventListener eventListener = new AtmosphereResourceEventListenerAdapter() {
+
+        @Override
+        public void onPreSuspend(AtmosphereResourceEvent arg0) {
+            
+        }
 
         @Override
         public void onSuspend(AtmosphereResourceEvent are) {
@@ -316,14 +331,6 @@ public class GwtAtmosphereResourceImpl implements GwtAtmosphereResource {
         public void onDisconnect(AtmosphereResourceEvent event) {
             suspended = false;
             writer.setTerminated(false);
-        }
-
-        @Override
-        public void onBroadcast(AtmosphereResourceEvent event) {
-        }
-
-        @Override
-        public void onThrowable(AtmosphereResourceEvent event) {
         }
     };
 }

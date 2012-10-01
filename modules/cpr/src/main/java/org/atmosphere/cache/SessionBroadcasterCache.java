@@ -75,7 +75,7 @@ public class SessionBroadcasterCache extends AbstractBroadcasterCache {
 
     @Override
     public void addToCache(String broadcasterId, AtmosphereResource r, Message message) {
-        long now = System.currentTimeMillis();
+        long now = System.nanoTime();
         put(message, now);
 
         if (r == null) return;
@@ -101,7 +101,7 @@ public class SessionBroadcasterCache extends AbstractBroadcasterCache {
             return result;
         }
 
-        Long cacheHeaderTime = (Long) session.getAttribute(broadcasterId);
+        Long cacheHeaderTime = Long.valueOf((String) session.getAttribute(broadcasterId));
         if (cacheHeaderTime == null) return result;
 
         return get(cacheHeaderTime);

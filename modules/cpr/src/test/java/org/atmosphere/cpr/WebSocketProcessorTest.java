@@ -20,7 +20,6 @@ import org.atmosphere.websocket.WebSocket;
 import org.atmosphere.websocket.WebSocketEventListener;
 import org.atmosphere.websocket.WebSocketEventListenerAdapter;
 import org.atmosphere.websocket.WebSocketProcessor;
-import org.atmosphere.websocket.protocol.SimpleHttpProtocol;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -226,11 +225,12 @@ public class WebSocketProcessorTest {
         assertEquals(uuid.get(), request.getAttribute(SUSPENDED_ATMOSPHERE_RESOURCE_UUID));
     }
 
-    public final static class ArrayBaseWebSocket extends WebSocket {
+    public final class ArrayBaseWebSocket extends WebSocket {
 
         private final OutputStream outputStream;
 
         public ArrayBaseWebSocket(OutputStream outputStream) {
+            super(framework.getAtmosphereConfig());
             this.outputStream = outputStream;
         }
 

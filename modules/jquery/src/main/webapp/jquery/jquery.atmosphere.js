@@ -913,8 +913,8 @@ jQuery.atmosphere = function() {
                 };
 
                 _sse.onmessage = function(message) {
-                    if (message.origin != "http://" + window.location.host) {
-                        jQuery.atmosphere.log(_request.logLevel, ["Origin was not " + "http://" + window.location.host]);
+                    if (message.origin != window.location.protocol + "//" + window.location.host) {
+                        jQuery.atmosphere.log(_request.logLevel, ["Origin was not " + window.location.protocol + "//" + window.location.host]);
                         return;
                     }
 
@@ -2112,11 +2112,7 @@ jQuery.atmosphere = function() {
 
                     // Ugly see issue 400.
                     if (_response.responseBody.length == 0 && _response.transport == 'streaming' && _response.state == "messageReceived") {
-                        var ua = navigator.userAgent.toLowerCase();
-                        var isAndroid = ua.indexOf("android") > -1;
-                        if (isAndroid) {
-                            continue;
-                        }
+                        continue;
                     }
 
                     _invokeFunction(_response);

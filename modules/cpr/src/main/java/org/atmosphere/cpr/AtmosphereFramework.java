@@ -15,6 +15,7 @@
  */
 package org.atmosphere.cpr;
 
+import org.atmosphere.cache.BroadcasterCacheInspector;
 import org.atmosphere.client.TrackMessageSizeFilter;
 import org.atmosphere.client.TrackMessageSizeInterceptor;
 import org.atmosphere.config.ApplicationConfiguration;
@@ -93,7 +94,6 @@ import static org.atmosphere.cpr.ApplicationConfig.WEBSOCKET_PROTOCOL;
 import static org.atmosphere.cpr.ApplicationConfig.WEBSOCKET_SUPPORT;
 import static org.atmosphere.cpr.FrameworkConfig.ATMOSPHERE_CONFIG;
 import static org.atmosphere.cpr.FrameworkConfig.HAZELCAST_BROADCASTER;
-import static org.atmosphere.cpr.FrameworkConfig.INJECTED_ATMOSPHERE_RESOURCE;
 import static org.atmosphere.cpr.FrameworkConfig.JERSEY_BROADCASTER;
 import static org.atmosphere.cpr.FrameworkConfig.JERSEY_CONTAINER;
 import static org.atmosphere.cpr.FrameworkConfig.JGROUPS_BROADCASTER;
@@ -121,7 +121,7 @@ import static org.atmosphere.websocket.WebSocket.WEBSOCKET_SUSPEND;
 public class AtmosphereFramework implements ServletContextProvider {
     public static final String DEFAULT_ATMOSPHERE_CONFIG_PATH = "/META-INF/atmosphere.xml";
     public static final String DEFAULT_LIB_PATH = "/WEB-INF/lib/";
-    public static final String MAPPING_REGEX = "[a-zA-Z0-9-&.*=;\\?]+";
+    public static final String MAPPING_REGEX = "[a-zA-Z0-9-&.*=@;\\?]+";
 
     protected static final Logger logger = LoggerFactory.getLogger(AtmosphereFramework.class);
 
@@ -134,7 +134,9 @@ public class AtmosphereFramework implements ServletContextProvider {
     protected final boolean isFilter;
     protected final Map<String, AtmosphereHandlerWrapper> atmosphereHandlers = new ConcurrentHashMap<String, AtmosphereHandlerWrapper>();
     protected final ConcurrentLinkedQueue<String> broadcasterTypes = new ConcurrentLinkedQueue<String>();
+    protected final ConcurrentLinkedQueue<BroadcasterCacheInspector> inspectors = new ConcurrentLinkedQueue<BroadcasterCacheInspector>();
 
+    protected String mappingRegex = MAPPING_REGEX;
     protected boolean useNativeImplementation = false;
     protected boolean useBlockingImplementation = false;
     protected boolean useStreamForFlushingComments = false;
@@ -145,7 +147,7 @@ public class AtmosphereFramework implements ServletContextProvider {
     protected boolean isSessionSupportSpecified = false;
     protected BroadcasterFactory broadcasterFactory;
     protected String broadcasterFactoryClassName;
-    protected static String broadcasterCacheClassName;
+    protected String broadcasterCacheClassName;
     protected boolean webSocketEnabled = true;
     protected String broadcasterLifeCyclePolicy = "NEVER";
     protected String webSocketProtocolClassName = SimpleHttpProtocol.class.getName();
@@ -293,13 +295,14 @@ public class AtmosphereFramework implements ServletContextProvider {
     private AtmosphereFramework addMapping(String path, AtmosphereHandlerWrapper w) {
         // We are using JAXRS mapping algorithm.
         if (path.contains("*")) {
-            path = path.replace("*", MAPPING_REGEX);
+            path = path.replace("*", mappingRegex);
         }
 
         if (path.endsWith("/")) {
-            path = path + MAPPING_REGEX;
+            path = path + mappingRegex;
         }
 
+        InjectorProvider.getInjector().inject(w.atmosphereHandler);
         atmosphereHandlers.put(path, w);
         return this;
     }
@@ -389,7 +392,7 @@ public class AtmosphereFramework implements ServletContextProvider {
     public AtmosphereFramework removeAtmosphereHandler(String mapping) {
 
         if (mapping.endsWith("/")) {
-            mapping += MAPPING_REGEX;
+            mapping += mappingRegex;
         }
 
         atmosphereHandlers.remove(mapping);
@@ -756,6 +759,10 @@ public class AtmosphereFramework implements ServletContextProvider {
         if (s != null) {
             atmosphereDotXmlPath = s;
         }
+        s = sc.getInitParameter(ApplicationConfig.HANDLER_MAPPING_REGEX);
+        if (s != null) {
+            mappingRegex = s;
+        }
     }
 
     public void loadConfiguration(ServletConfig sc) throws ServletException {
@@ -855,6 +862,9 @@ public class AtmosphereFramework implements ServletContextProvider {
     protected void sessionSupport(boolean sessionSupport) {
         if (!isSessionSupportSpecified) {
             config.setSupportSession(sessionSupport);
+        } else if (!config.isSupportSession()) {
+            // Don't turn off session support.  Once it's on, leave it on.
+            config.setSupportSession(sessionSupport);
         }
     }
 
@@ -902,8 +912,6 @@ public class AtmosphereFramework implements ServletContextProvider {
             }
         }
         webSocketProtocol.configure(config);
-
-        new WebSocketProcessorFactory(config);
     }
 
     public AtmosphereFramework destroy() {
@@ -945,7 +953,6 @@ public class AtmosphereFramework implements ServletContextProvider {
 
                 if (!ReflectorServletProcessor.class.getName().equals(atmoHandler.getClassName())) {
                     handler = (AtmosphereHandler) c.loadClass(atmoHandler.getClassName()).newInstance();
-                    InjectorProvider.getInjector().inject(handler);
                 } else {
                     handler = new ReflectorServletProcessor();
                 }
@@ -960,11 +967,9 @@ public class AtmosphereFramework implements ServletContextProvider {
                     initParams.put(a.getParamName(), a.getParamValue());
                 }
 
-                boolean isJersey = false;
                 for (AtmosphereHandlerProperty handlerProperty : atmoHandler.getProperties()) {
 
                     if (handlerProperty.getValue() != null && handlerProperty.getValue().indexOf("jersey") != -1) {
-                        isJersey = true;
                         initParams.put(DISABLE_ONSTATE_EVENT, "true");
                         useStreamForFlushingComments = true;
                         broadcasterClassName = lookupDefaultBroadcasterType(JERSEY_BROADCASTER);
@@ -1299,7 +1304,12 @@ public class AtmosphereFramework implements ServletContextProvider {
                 }
                 logger.trace(ex.getMessage(), ex);
 
+                AsyncSupport current = asyncSupport;
                 asyncSupport = asyncSupport.supportWebSocket() ? new Tomcat7BIOSupportWithWebSocket(config) : new BlockingIOCometSupport(config);
+                if(current instanceof AsynchronousProcessor) {
+                    ((AsynchronousProcessor)current).shutdown();
+                }
+
                 asyncSupport.init(config.getServletConfig());
                 logger.warn("Using " + asyncSupport.getClass().getName());
 
@@ -1584,6 +1594,24 @@ public class AtmosphereFramework implements ServletContextProvider {
         return this;
     }
 
+    /**
+     * Add a {@link BroadcasterCacheInspector} which will be associated with the defined {@link BroadcasterCache}
+     * @param b {@link BroadcasterCacheInspector}
+     * @return this;
+     */
+    public AtmosphereFramework addBroadcasterCacheInjector(BroadcasterCacheInspector b) {
+        inspectors.add(b);
+        return this;
+    }
+
+    /**
+     * Return the list of {@link BroadcasterCacheInspector}
+     *
+     * @return the list of {@link BroadcasterCacheInspector}
+     */
+    protected ConcurrentLinkedQueue<BroadcasterCacheInspector> inspectors() {
+        return inspectors;
+    }
 
     protected void autoConfigureService(ServletContext sc) throws IOException {
         final ClassLoader cl = Thread.currentThread().getContextClassLoader();

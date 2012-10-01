@@ -253,7 +253,7 @@ public interface ApplicationConfig {
     /**
      * The default content-type value used when Atmosphere requires one. Default is text/plain.
      */
-    String DEFAULT_CONTENT_TYPE = ApplicationConfig.class.getPackage().getName() + ".defaultContextType";
+    String DEFAULT_CONTENT_TYPE = ApplicationConfig.class.getPackage().getName() + ".defaultContentType";
     /**
      * Wrap the request/response with associated {@link javax.servlet.http.HttpServletRequest} and
      * {@link javax.servlet.http.HttpServletResponse}
@@ -291,4 +291,8 @@ public interface ApplicationConfig {
      * but available to all transport.
      */
     String SUSPENDED_ATMOSPHERE_RESOURCE_UUID = AtmosphereResource.class.getName() + "suspended.uuid";
+    /**
+     * Change the default regex used when mapping AtmosphereHandler. Default is {@link AtmosphereFramework#MAPPING_REGEX}
+     */
+    String HANDLER_MAPPING_REGEX = ApplicationConfig.class.getPackage().getName() + ".mappingRegex";
 }
